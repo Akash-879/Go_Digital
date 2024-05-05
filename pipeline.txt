@@ -1,0 +1,55 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_DEFAULT_REGION = 'us-east-1'
+        AWS_ACCESS_KEY_ID     = credentials
+        AWS_SECRET_ACCESS_KEY = credentials
+
+    stages {
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build('sample1')
+                }
+            }
+        }
+        
+        stage('Push to ECR') {
+            steps {
+                script {
+                    withAWS(region: us-east-1, credentials: 'credentials_id') {
+                        sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin credentials_id.dkr.ecr.us-east-1.amazonaws.com'
+                        sh 'docker tag myproject:latest credentials_id.dkr.ecr.us-east-1.amazonaws.com/go-digital'
+                        sh 'docker push credentials_id.dkr.ecr.us-east-1.amazonaws.com/go-digital'
+                    }
+                }
+            }
+        }
+
+        stage('Provision AWS Resources') {
+            steps {
+                script {
+                    sh 'terraform init'
+                    sh 'terraform apply -auto-approve'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanup()
+        }
+    }
+}
+
+def cleanup() {
+    script {
+        // Clean up Docker images
+        docker.image('sample1').remove(force: true)
+
+        // Clean up Terraform files
+        sh 'terraform destroy -auto-approve'
+    }
+}
